@@ -1,0 +1,99 @@
+VERSION 2.7 —— 速度回收 + randomize 补回（2026-11-01 22:05）
+========================================================
+
+指纹（改后）：
+  main.py              c8fead165dd4e0c1310ab6916fb810b3   （未变，本轮只动 config）
+  config.json          84972b7c5e7b14bbc49180503be5f799   （补回 randomize）
+  config-平衡档.json    84359a60b627fe5a4e0b29e118121013
+  config-满载档.json    67c57f0686428edadea93ccf5323938
+
+改前回退基准：config.backup-20261101-215955-优化前.json
+              （= 转火接管已落地、randomize 尚未补的状态）
+
+--------------------------------------------------
+一、诊断：为什么功能翻倍反而更钝
+--------------------------------------------------
+拿 10-26 基准版做机制 diff，三个硬事实：
+
+1) main.py 1995 行 -> 3007 行；config 117 键 -> 172 键（新增 81、消失 26）
+2) 基准 pick_targets 全文 12 行（min_h + radius + 距离排序）。
+   现在多三道过滤器全开：ignore_zone / lock_gate / team_icon。
+3) config 里整个 randomize 段消失了（9 个键）。代码还在、rz_on=False，
+   所有开火随机化静默失效，节奏变成固定毫秒，且不报错。
+
+真正的"钝"不在代码，在 6 层串联刹车（都在 aim.*）：
+  单周期实际位移 = min(max_step, 偏差×ratio, abs_cap×偏差, bcr×框高, …)
+
+--------------------------------------------------
+二、实测（_check_速度预算.py，闭环仿真：检测帧预算 + 1ms 步进跟随 + k 误差）
+--------------------------------------------------
+框高 300、k 准确、60fps，从偏差 D 贴到目标：
+
+  档位        300px      150px      60px
+  基准版      2 帧33ms   3 帧50ms   1 帧17ms
+  测试版      6 帧100ms  4 帧67ms   3 帧50ms     <- 慢 3 倍
+  平衡档      3 帧50ms   2 帧33ms   2 帧33ms
+  满载档      2 帧33ms   2 帧33ms   1 帧17ms     <- 等于基准
+
+卡在哪（偏差 300、框高 300、首帧）：
+  基准    ratio 0.73  budget 219px  cap 225px  -> 走 219px
+  测试版  ratio 0.67  budget 201px  cap  90px  -> 只走 90px   ★bcr=0.30 是硬上限
+  平衡档  ratio 0.70  budget 211px  cap 180px  -> 走 180px
+  满载档  ratio 0.73  budget 220px  cap 225px  -> 走 220px
+
+k 低估 1.8 倍时的最坏过冲：
+  基准 0px / 测试版 16px / 平衡档 24px / 满载档 51px
+
+--------------------------------------------------
+三、改了什么
+--------------------------------------------------
+[1] 补回 randomize 全套（config.json + 两档都带）
+    enabled=true、reaction_delay_ms [0,12]、cooldown_ms [90,160]、
+    key_hold_ms [20,45]、skip_chance 0.01、target_lost_cancel_ms 180、
+    burst_shots [1,1]、hold_release_delay_ms [80,150]、max_hold_ms 800、
+    hold_block_ms [150,350]
+    另补 10 个顶层键：burst_shots / cooldown_ms / key_hold_ms / fire_mode /
+    fire_hysteresis_ms / fire_require_aim_key / trigger_key / region_mode /
+    window_scale / aim_hotkey_name
+
+[2] 两档（只动 config，不动代码）
+
+  键                        测试版   平衡档   满载档
+  aim.burst_cap_box_ratio   0.30     0.60     0.75
+  aim.abs_move_cap          0.55     0.70     0.85
+  aim.abs_move_cap_near     0.62     0.85     0.95
+  aim.budget_ratio          0.78     0.82     0.86
+  aim.budget_ratio_initial  0.72     0.85     0.95
+  aim.near_boost_ratio      0.72     0.85     0.95
+  aim.near_damp_ratio       0.55     0.80     0.85
+  aim.first_burst_ms        320      280      260
+  aim.vel_max_step_px_s     140      280      280
+  aim.follow_tau_floor      0.45     0.20     0.20
+  aim.lead_ms               0        40       40
+  lock.hold_ms              120      400      400
+  lock.sticky_ms            400      550      550
+  lock.match_px             180      160      160
+  min_box_height_px         26       35       35
+  conf                      0.30     0.32     0.32
+
+  两档都保留：转火闸（never_switch=false / 迟滞 0.65 / 冷却 500±20% /
+  commit 180ms）与 max_step_px 360。
+
+--------------------------------------------------
+四、回退
+--------------------------------------------------
+9-回退到优化前.bat         回到 21:48 转火接管版（不含两档）
+9-回退到转火改造前.bat      回到今天 21:48 之前
+9-回基准版.bat             回到 10-26 基准版
+
+旧的老三档（切换-平衡/极速/稳重 + 对应 config）已归档到
+_bat归档-20261101\，它们不含 randomize 和转火闸，切过去会丢参数。
+
+--------------------------------------------------
+五、还要你亲手验的
+--------------------------------------------------
+仿真只覆盖「预算链 + k 误差」，覆盖不到：
+  · 三道过滤器各剔掉多少真目标（要开 5-自瞄诊断.bat 看 [过滤]/[锁定闸] 日志）
+  · 转火手感、扫射压枪的横向跟随
+建议：先切平衡档打一局，再用满载档打一局，记「贴脸那一下快不快」和
+「有没有拉过头」两件事，剩下的按 _读我-目录说明.txt 里的话改单个数。

@@ -1,0 +1,9 @@
+# 模型/引擎体积大（37MB~144MB），不进 git；需要时从归档 zip 解压
+*.engine
+*.pt
+*.onnx
+__pycache__/
+debug_frames/
+_回退*/
+_tmp_cfg/
+_待删*/

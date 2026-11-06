@@ -1,0 +1,231 @@
+{
+  "model": "yolo11n-pose.pt",
+  "device": "0",
+  "imgsz": 512,
+  "conf": 0.3,
+  "iou": 0.45,
+  "classes": [
+    0
+  ],
+  "region_mode": "center",
+  "region_size": 1200,
+  "region": null,
+  "aim_point_offset_y": 0,
+  "trigger_radius_px": 32,
+  "min_box_height_px": 55,
+  "max_box_height_px": 900,
+  "trigger_key": "8",
+  "key_hold_ms": 30,
+  "cooldown_ms": 150,
+  "burst_shots": 1,
+  "randomize": {
+    "enabled": true,
+    "reaction_delay_ms": [
+      0,
+      4
+    ],
+    "cooldown_ms": [
+      90,
+      160
+    ],
+    "key_hold_ms": [
+      20,
+      45
+    ],
+    "skip_chance": 0.0,
+    "target_lost_cancel_ms": 180,
+    "burst_shots": [
+      1,
+      1
+    ],
+    "hold_release_delay_ms": [
+      80,
+      150
+    ],
+    "max_hold_ms": 800,
+    "hold_block_ms": [
+      150,
+      350
+    ]
+  },
+  "toggle_hotkey_vk": 120,
+  "toggle_hotkey_name": "F9",
+  "show_window": true,
+  "window_scale": 1.0,
+  "draw_box_on_screen": false,
+  "save_debug_frames": false,
+  "debug_dir": "debug_frames",
+  "log_detections": false,
+  "start_enabled": false,
+  "test_fire_hotkey_name": "F7",
+  "test_fire_hotkey_vk": 118,
+  "fire_mode": "off",
+  "aim": {
+    "enabled": true,
+    "gain": 1.0,
+    "max_step_px": 180,
+    "dead_zone_px": 1.0,
+    "noise": 0.04,
+    "aim_at": "head",
+    "skip_chance": 0.0,
+    "require_aim_key": true,
+    "aim_key": "RButton",
+    "min_box_height_px": 18,
+    "aim_height_ratio": 0.2,
+    "smooth": {
+      "enabled": false,
+      "steps": 1,
+      "interval_ms": 0
+    },
+    "queue_max": 2,
+    "overshoot_chance": 0.0,
+    "settle_jitter_px": 0.0,
+    "adaptive": true,
+    "pixel_per_count": [
+      1.0,
+      1.0
+    ],
+    "crosshair_offset_px": [
+      0,
+      0
+    ],
+    "invert_x": false,
+    "invert_y": false,
+    "log": true,
+    "follow_interval_ms": 1,
+    "follow_tau": 0.4,
+    "follow_tau_floor": 0.3,
+    "abs_move_cap": 0.35,
+    "max_dist_px": 2000,
+    "budget_ratio": 1.0,
+    "budget_ratio_initial": 0.9,
+    "first_burst_ms": 220,
+    "lead_ms": 60,
+    "lead_max_px": 120,
+    "lead_step_px": 8,
+    "vel_smooth": 0.75,
+    "vel_window_ms": 80,
+    "vel_max_px_s": 2400,
+    "vel_max_step_px_s": 1200.0,
+    "velocity_dead_px_s": 40.0,
+    "pose_point": "auto",
+    "pose_conf": 0.4,
+    "pose_smooth": 0.85,
+    "pose_hold_frames": 2,
+    "head_y_max": 0.3,
+    "chest_y_min": 0.12,
+    "chest_y_max": 0.45,
+    "pose_jump_cap_px": 0,
+    "allow_low_conf_pose": false,
+    "jump_cap_px": 0,
+    "hold_track_ms": 120,
+    "new_target_resid": 0.55,
+    "fov_change_ratio": 0.1,
+    "fov_settle_ms": 60,
+    "fov_hold_ratio": 0.5,
+    "fov_maxstep_px": 160,
+    "ads_grace_ms": 60,
+    "ads_hold_ratio": 0.8,
+    "ads_maxstep_px": 300,
+    "extrap_draw": true,
+    "extrap_max_ms": 60,
+    "near_ratio": 0.45,
+    "far_px": 260.0,
+    "smooth_damp": true,
+    "smooth_time_ms": 5.0,
+    "smooth_max_speed_px_s": 6000.0,
+    "new_target_k_guard": 0.85,
+    "damp_ratio": 0.22
+  },
+  "aim_hotkey_name": "F6",
+  "aim_hotkey_vk": 117,
+  "fire_require_aim_key": true,
+  "lock": {
+    "enabled": true,
+    "hold_ms": 250,
+    "match_px": 180,
+    "sticky_ms": 400,
+    "min_box_height_px": 18,
+    "switch_hysteresis": 0.88,
+    "switch_confirm_frames": 1,
+    "switch_cooldown_ms": 90.0,
+    "fast_switch_in_box": true,
+    "fast_switch_on_coast": true
+  },
+  "fire_hysteresis_ms": 120,
+  "move_test_hotkey_vk": 116,
+  "move_test_hotkey_name": "F5",
+  "pose_engine": "yolo11n_pose_512_fp16.engine",
+  "crop_side": 256,
+  "crop_track": {
+    "enabled": true,
+    "full_every": 4
+  },
+  "show_every": 2,
+  "tracker": {
+    "enabled": true,
+    "accel_q": 400.0,
+    "meas_r": 25.0,
+    "gate_px": 260.0,
+    "gate_iou": 0.02,
+    "coast_ms": 400.0,
+    "confirm_hits": 1,
+    "strict": false
+  },
+  "kmatrix": {
+    "enabled": true,
+    "window": 11,
+    "max_step": 0.0,
+    "min_counts": 12.0,
+    "k_min": 0.4,
+    "k_max": 2.5,
+    "bands": [
+      0,
+      120,
+      260
+    ],
+    "prior": [
+      1.0,
+      1.0
+    ],
+    "persist": false
+  },
+  "hitbox": {
+    "enabled": true,
+    "kp_conf": 0.45,
+    "w_head_far": 0.6,
+    "w_head_near": 1.25,
+    "w_chest": 0.95,
+    "w_belly": 0.6,
+    "near_box_h": 260.0,
+    "near_box_lo": 200.0,
+    "switch_margin": 1.05,
+    "hold_frames": 2,
+    "r_head": 0.08,
+    "r_chest": 0.26,
+    "r_belly": 0.48,
+    "chest_t": 0.22
+  },
+  "ballistics": {
+    "enabled": true,
+    "speed_m_s": 600.0,
+    "size_const_px_m": 2200.0,
+    "gravity_m_s2": 0.0,
+    "max_flight_ms": 260.0,
+    "lead_gain": 1.0,
+    "min_box_h": 24.0,
+    "px_per_m": 12.0
+  },
+  "recoil": {
+    "enabled": true,
+    "key": "LButton",
+    "peak1_px_s": 110.0,
+    "peak2_px_s": 55.0,
+    "switch_s": 0.55,
+    "ramp_s": 0.12,
+    "sway_px_s": 6.0,
+    "sway_hz": 0.7,
+    "scale": 0.6,
+    "max_px_s": 400.0
+  }
+}

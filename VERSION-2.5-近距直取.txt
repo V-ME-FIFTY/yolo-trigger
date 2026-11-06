@@ -1,0 +1,157 @@
+yolo-trigger 2.5「近距直取」
+定版: 2026-10-30 21:20
+main.py     59f566e6f4d71d69808f844a1cb9dafb（2432 行）
+config.json cdc6d3a6a9bbc0aa5aa458a46715546c
+pose_trt.py 29a730e925b52b45f7cd75306e91894c（未改）
+
+症状
+  枪口离敌人头部已经比较近时（偏差约 20~140px），自瞄转向明显变慢：
+  准星到了头边开始「磨」，要 4~6 个检测周期（130~200ms）才贴上，
+  而远距离一次拉枪反而利索。近 = 大框 = 贴脸，越近越钝。
+
+根因（三层，都是「越近越减速」）
+  1) 近距曲线一路降到 0px
+     main.py 2026-10-26 的「远冲近稳·连续版」：偏差 < far_px(460) 起，
+     ratio 按平方曲线下降，**一直降到 0px 时等于 near_ratio(0.55)**。
+     于是最后几十像素每帧只肯走 55%，贴得越近越不肯动。
+  2) 跟随线程的「不过目标」钳位写反了（真 bug，2026-10-28 就有）
+     旧：cx = min(px,tx) if nx>tx else (max(px,tx) if nx<tx else nx)
+     两个分支的 min/max 反了：步长**没**越过目标时取 max(px,tx)=tx，
+     等于把航位推算的准星位置直接当成「已经到目标」→ 剩余偏差立刻变 0
+     → 跟随线程每个检测周期只发出**一步**就停，预算剩下的份额全浪费。
+     （这也是 10-28「一顿一顿/僵硬」的机械原因：每周期只走一步）
+  3) 缩放判定用固定 10% 框高变化阈值
+     贴脸时框高几百像素，准星一转框高就变 10~30% → 被判成「开镜缩放」，
+     每帧重置 fov 稳定期，预算按到 fov_hold_ratio(0.3)、限幅 50px → 冻住。
+
+改了什么（代码）
+  · 新增「近距直取」贴脸带：偏差 ≤ near_boost_px(140) 时反向抬预算，
+    曲线 (1-t²)²，带口处斜率 0（与 near_ratio 衔接），贴脸处 = near_boost_ratio(1.0)。
+    放在 fov/开镜/过冲三道硬保护**之前** —— 真在缩放、真冲过头，那三道照样压得住。
+  · 过渡带改为 [near_boost_px, far_px] 线性插值（原来按 ad/far 平方，会多压中距一脚）。
+  · 跟随线程钳位改为「越过了才钳回目标」；旧行为留 `follow_clamp:false` 一键回退。
+  · 过冲抑制：贴脸带用 near_damp_ratio(0.85)，带外仍是 damp_ratio(0.45)
+    （原来一律 0.45，等于每次符号翻转就冻 250ms）。
+  · 缩放判定阈值随框高放大：×clamp(框高/fov_change_ref_px, 1, 3)；
+    fov_change_ref_px<=0 可一键关掉这个自适应。
+  · 瞄准点 EMA alpha 随框高自适应（pose_smooth_big_px / pose_smooth_near）：
+    贴脸时少平滑、跟得紧；远处仍 0.5 抗抖。
+  · 贴脸带的绝对闸放宽到 abs_move_cap_near(0.95)，带外仍 abs_move_cap(0.85)。
+
+实测（三个脚本，都不碰真鼠标）
+  _check_近距直取.py（纯数值，30fps）
+    初始偏差   旧：帧/耗时     新：帧/耗时
+      15px    3帧/100ms      1帧/33ms
+      30px    4帧/133ms      1帧/33ms
+      60px    4帧/133ms      1帧/33ms
+     100px    5帧/167ms      1帧/33ms
+     140px    5帧/167ms      2帧/67ms
+     250px    6帧/200ms      2帧/67ms
+  _test_跟随线程.py（真跑跟随线程，mouse_move 换成记录器）
+    贴脸带 偏差60px：一周期发 59px（3 次）→ 余 1px
+    旧口径 偏差60px（预算33px）：一周期 34px → 余 26px
+    follow_clamp=false：一周期 45px（1 次）→ 余 15px（复现「磨」）
+    预算花完后 30ms 内 0 次（不抽）
+  _test_近距直取.py：预算曲线单调、带口无向下台阶、EMA 跟随随框高单调增
+  _check_分段.py：分段表（normal / 开镜宽限 / fov 期）已按新顺序重算
+
+调参（都在 config.json 的 aim 里）
+  near_boost_px      140   贴脸带宽度；想让「直取」覆盖更远就调大（如 200）
+  near_boost_ratio   1.0   带内最里端的预算比例；调到 0.85 会更柔一点
+  abs_move_cap_near  0.95  贴脸带绝对闸；想更保险调 0.85（速度略降）
+  near_damp_ratio    0.85  贴脸带过冲抑制上限；调 0.45 恢复旧「冻住」手感
+  pose_smooth_big_px 240   框高超过它开始减少平滑（0=关闭自适应）
+  pose_smooth_near   0.75  贴脸时的 EMA alpha（越大越跟手、越大越抖）
+  fov_change_ref_px  160   缩放判定阈值的框高参考；0=关闭自适应
+
+一键回退到旧手感
+  near_boost_px: 0
+  follow_clamp: false
+  near_damp_ratio: 0.45
+  pose_smooth_big_px: 0
+  fov_change_ref_px: 0
+清理（2026-10-30 21:55）
+  运行目录 C:\yolo-trigger 107 → 73 项，工作副本 → 71 项；全部软删除到各自的 _待删-20261030/（2.5MB / 0.7MB），确认后删该目录即可。
+  移走：main.py.bak-* ×10、config.backup-*、VERSION-2.0*、一次性探针 ×13、_teamicon_check.png、__pycache__、_回退-2.4-20261028、_历史脚本、_历史预设、死链 切换-回基准原样.bat。
+  清理脚本 _clean_workspace_25.py（白名单 + 默认 dry-run）、探针 _check_切换档完整性.py（22 档全部有效）。
+  2.5 代码已同步到 C:\yolo-trigger（main.py md5 59f566e6…）。
+
+第二阶段（2026-10-30 22:15）：开镜才锁 + 检测区 800
+  用户原话：「我需要的是开镜才锁」「可以降低检测框大小,提高转向与检测帧率」
+  · config.json aim.require_aim_key false→true（等于 config-开镜锁-极速.json 原样）
+  · main.py 开镜宽限 × 贴脸带放行：贴脸带内用 near_ads_hold_ratio 0.85 / near_ads_maxstep_px 160，
+    不再被开镜后 260ms 的 0.45/80px 压住（否则每次开镜先磨 260ms）
+  · region_size 1200→800；新增 config-检测区800.json / config-检测区1200.json + 两个切换 bat
+  · 基准 _bench_region.py：1200 单帧 15.1ms(66fps) / 800 13.6ms(73fps)；推理 12.27ms 是天花板
+  · 否掉换 416 引擎这条路：416 推理 12.26ms vs 512 12.82ms，几乎一样
+  指纹 main.py 6298709d1f5287fb6140cbd74a803884 / config.json a89eb8b2f253d79f2ce08a5eb77e2abe
+
+一键回退
+  开镜锁 → 常驻锁人：config.json 里 require_aim_key 改 false（或用 切换-开镜锁-极速.bat 的反向）
+  检测区 → 1200：双击 切换-检测区1200.bat
+  开镜宽限回旧手感：near_ads_hold_ratio 0.45、near_ads_maxstep_px 80
+
+第三阶段（2026-10-30 22:30）：远/近双模
+  用户原话：「当准心离敌人较远时，采用高速度低精度，只要打到敌人躯干就行，
+              当准心离敌人比较近时，采用高精度，高速度方案」
+  · config aim.mode_split：far_px 260 / hyst_px 40（≥300 进远档、≤220 回近档）
+    far_part chest + far_height_ratio 0.42 + far_step_cap 0.9
+    near_part head + near_height_ratio 0.20 + step_cap 0.75
+  · main.py：取点前用「框中心-准星」判档；换档清 aim_pose_part / aim_px_sm；
+    按档传部位给 pick_pose_point、按档换兜底高度与单步消比
+  · 核查脚本 _check_双模.py（参数、7 条代码链路、滞回模拟、部位落点）
+  · enabled=false 即完全回到旧的单一 pose_point 行为
+  指纹 main.py 7c6101a370a35c4e9ee5fd3faddfbaf1 / config.json 9981f1b69e3d35d6400ff76768e9c53e
+  参考（只借思路，未拷贝代码）：obs-snap-detector/RESEARCH.md、RN_AI_cpp、yolov8_aimbot、PrimeAIM
+
+第四阶段（2026-10-30 22:50）：交战不换人 + 远距不过冲 + 近距再快
+  用户原话：「当正在进行一个敌人的瞄准时忽略其他锁定的敌人，而且离得较远时有时会拉过头，
+              很近时稍微有点慢」
+  · pick_locked：交战期（按住开镜/瞄准键）改用「中心距≤match_px 且 IoU≥engage_min_iou 0.15」
+    才算同一目标；放宽圈(match_px×engage_relax)里恰好一个候选才更新位置，0 个或多个一律
+    保留旧框；过期后只在 engage_switch_max_px 内重选；附近无人时允许正常重锁。松手行为不变。
+  · 每周期位移上限新增 burst_cap_box_ratio 0.75（×框高，与 k 无关）→ k 估大 1.5 倍时
+    原来过冲 94~138px，现在到位；远档 far_lead_scale 0.5、far_step_cap 0.9→0.6
+  · near_boost_px 140→200（贴脸直取带变宽，近距不再吃 55%~64% 的过渡）
+  新增核查 _check_锁定不换人.py（5 条断言）、_check_远距过冲.py
+  指纹 main.py 5dec971be4889a511b68e5dd91a682d1 / config.json 6b046096f0c4c1a7542bb4d9270262be
+
+第五阶段（2026-10-30 23:00）：误锁过滤数值回退 + 近距索敌加强
+  用户原话：「并且把数值回调到之前一版,并略微加强近距离时的索敌速度」
+  背景：person_check 用 .scratch/vt 真实帧验，8 个真实检出剔掉 4 个（50%）——
+        2 个"贴底手臂"其实是站在下方的人、2 个"宽高比 1.27/1.41"其实是转身/蹲下的真人。
+  回退：person_check.enabled=false（代码留着），阈值放宽到 wh≤1.8 / 贴底 0.98 / min_kp 3，
+        lock.confirm_frames 2→1（立即上锁）
+  加强：near_boost_px 200→240、near_damp_ratio 0.85→0.92、near_ads_hold_ratio 0.85→0.92、
+        first_burst_ms 400→500
+  效果：140px 收敛 2 帧/67ms → 1 帧/33ms；250px 2 帧；开镜宽限 60px 预算 51→55px
+  指纹 main.py da83e1267462ff1364d6ded5bc28b83e / config.json baa7167a45e463cc84308d43d93a8530
+  教训：过滤类改动必须先用真实帧回归（见 _check_防误锁.py 与 .scratch/vt 用法），别只看合成用例。
+
+第六阶段（2026-10-30 23:20）：开火态灵敏度（第三套 k）
+  用户问：「开火状态鼠标灵敏度下降考虑了吗」→ 原来只分腰射/开镜，开火没分。
+  · main.py 新增 aim_k_fire：按 fire_key(默认 LButton) 判开火；连发每帧续期；
+    松手保留 fire_grace_ms 120ms；优先级 开火>开镜>腰射；标定回写分三套
+  · config：fire_sense/fire_key/fire_grace_ms/fire_k_scale(0.85 起步，自适应学准)
+  · 代价量化（_check_开火灵敏.py）：scale .9/.85/.75/.6 时不分系数多花 1/1/2/3 帧（33~99ms）
+  指纹 main.py a7173aee65f39d42fbde8b49ceeaef13 / config.json 01ca5ccf6f7fb36e5a772865c7227263
+
+第八阶段（2026-10-30 23:40）：转火（目标切换）稳定性
+  用户原话：「参考别人的项目改一下转火,现在还会来回锁定两个框」
+  根因：没匹配上旧框就"就近重选"=每帧重新投票，两人挨着或框抖就来回跳。
+  改法（借 SORT/ByteTrack 思路）：预测中心匹配(pred_gain .5) + 换人迟滞(hysteresis .7)
+        + 连续确认(2 帧) + 冷却(400ms) + 闸不过就保持原目标；交战期规则不变。
+  实测 _check_转火.py：±150/±250/±350 抖动换人 15/19/14 次 → 3/3/1 次（↓80~93%），
+        真换人仍能换过去。
+  事故记录：一次性切片脚本误删中间 ~900 行函数区，已用 20:12 备份拼回 + 补回三轮改动，
+        坏档 main.py.broken-20261030-2330，救回脚本 _rescue_函数区.py。
+  指纹 main.py 3c44bc2efe61007cd2d0eb00a3577681 / config.json 9b77e36c17b5c76e693d910c17780cbc
+
+第九阶段（2026-10-30 23:55）：锁空白 = 粉框
+  用户：「经常会锁空白,我怀疑是某种残留」＋「锁空白是粉框」→ 粉框=锁定框(255,0,255)。
+  ① 假检出：新增 lock_gate（只拦锁、绿框照常）：宽高比 .12~1.6、框内可信关键点≥3、框高≥3%屏高
+     （依据 _measure_锁闸.py 真实 21 检出统计）；lock.confirm_frames=2，确认改"距离邻近累计"(confirm_px 120)
+  ② 残留：无候选立刻清锁（不再保留旧框）；交战期保留窗口独立 stale_hold_ms 120；
+     没锁定时清 pose/EMA/速度/提前量；保持态预算清零（停手不继续拉）
+  实测：锁空白 7 类框判定正确；_check_转火 90 帧换人 15/19/15 → 2/3/2（↓84~87%）
+  指纹 main.py 8145bc73ec43b8ced3fada56d9655f5a / config.json bcbc8f8a7b57c20c004e7e5d270d9174
